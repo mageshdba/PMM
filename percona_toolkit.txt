@@ -1,0 +1,17 @@
+https://docs.percona.com/percona-toolkit/
+
+wget https://downloads.percona.com/downloads/percona-toolkit/3.5.7/binary/redhat/9/x86_64/percona-toolkit-3.5.7-1.el9.x86_64.rpm
+
+
+Installing:
+ percona-toolkit           
+Installing dependencies:
+ perl-DBD-MySQL            
+ perl-DBI                  
+ perl-TermReadKey          
+
+
+
+pt-deadlock-logger -u db2dba --ask-pass  h=10.120.8.34 --port 2201  --iterations 1
+
+show variables like '%innodb_print_all_deadlocks%';

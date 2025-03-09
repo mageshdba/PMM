@@ -1,0 +1,60 @@
+GRANT SELECT, INSERT, UPDATE, DELETE, DROP ON performance_schema.* TO 'pmm'@'%';
+
+DB SIZE
+SELECT table_schema "DB Name",ROUND(SUM(data_length + index_length) / 1024 / 1024, 1) "DB Size in MB" FROM information_schema.tables GROUP BY table_schema ; 
+SELECT table_schema "DB Name",ROUND(SUM(data_length + index_length) / 1024 / 1024, 1) "DB Size in MB" FROM information_schema.tables WHERE table_schema='ICICISOR'; 
+
+TABLE SIZE
+
+SELECT table_name AS `Table`,round(((data_length + index_length) / 1024 / 1024), 2) `Size in MB` FROM information_schema.TABLES  ;
+SELECT table_name AS `Table`,round(((data_length + index_length) / 1024 / 1024), 2) `Size in MB` FROM information_schema.TABLES WHERE table_schema = "netc" ;
+
+
+Run query
+
+->At 5PM 
+
+select * from settlement.SETTLED_RECORDS ;
+--------------
+select * from SETTLED_RECORDS
+--------------
+
+mysql: Out of memory (Needed 7841792 bytes)
+ERROR 2008 (HY000): MySQL client ran out of memory
+mysql>
+
+
+SET GLOBAL slow_query_log = 1;
+
+SET GLOBAL long_query_time
+
+
+UPDATE performance_schema.setup_consumers
+    -> SET ENABLED = 'YES' WHERE NAME LIKE '%statements%';
+
+show variables like '%performance_schema%';
+
+slow_query_log	ON	
+Enables the slow query log.
+log_output	'FILE'	
+Ensures the log is sent to a file. (This is the default on MariaDB.)
+long_query_time	0	
+The slow query threshold in seconds. In heavily-loaded applications, many quick queries can affect performance more than a few slow ones. Setting this value to 0 	ensures all queries are captured.
+log_slow_admin_statements	ON	
+Includes the logging of slow administrative statements.
+log_slow_slave_statements	ON	
+Enables logging for queries that have taken more than long_query_time seconds to execute on the replica.
+
+long_query_time
+
+ pmm-admin add mysql --query-source=perfschema --username=pmm --password=Open@123  --service-name=archive_server --host=172.160.1.245 --port=3306
+
+
+[root@ip-172-120-4-109 ~]#  pmm-admin add mysql --query-source=perfschema --username=pmm --password=Open@123  --service-name=archive_server --host=172.160.1.245 --port=3306
+MySQL Service added.
+Service ID  : /service_id/2f84e973-5939-49cd-901f-22795ddc2015
+Service name: archive_server
+
+Table statistics collection disabled (the limit is 1000, the actual table count is 12445).
+
+[root@ip-172-120-4-109 ~]#

@@ -1,0 +1,126 @@
+PMM 
+Master server - client server 
+
+
+MASTER - DB Monitoring	
+3.109.229.121 / 172.150.0.56
+
+CLIENT - CHN	
+13.233.138.108/ 172.160.0.229
+
+##########################################
+Check if exists 
+----------------
+rpm -qa | grep -i pmm
+
+(Optional) REMOVE OLD 
+--------------------
+yum remove pmm2-client-2.21.0-6.el8.x86_64
+
+step 1: 
+sudo yum install https://repo.percona.com/yum/percona-release-latest.noarch.rpm -y
+
+
+step 2:
+
+percona-release setup ps80
+
+step 3:
+sudo yum install pmm2-client -y
+
+
+step 4: 
+port 443 to be opened for db server which is to be monitored
+telnet 172.150.0.56 443
+telnet 3.109.229.121 443
+
+step 5
+port 27017 to be opened in db server from pmm server
+netstat -ltnp | grep ':7777'
+telnet 13.233.138.108 27017
+
+Step 6
+ pmm-admin config --server-insecure-tls --server-url=https://admin:Open@123@3.109.229.121:443
+ 
+ pmm-admin config --server-insecure-tls --force --server-url=https://dbamon:Pmmdb@123@172.150.0.56:443
+
+Step 6.1 - Set Profiling
+
+mongo 
+use admin 
+
+db.getSiblingDB("admin").createRole({
+    role: "explainRole",
+    privileges: [{
+        resource: {
+            db: "",
+            collection: ""
+            },
+        actions: [
+            "listIndexes",
+            "listCollections",
+            "dbStats",
+            "dbHash",
+            "collStats",
+            "find"
+            ]
+        }],
+    roles:[]
+})
+
+db.createUser({
+   user: "pmm",
+   pwd: "Open@123",
+   roles: [
+      { role: "explainRole", db: "admin" },
+      { role: "clusterMonitor", db: "admin" },
+      { role: "read", db: "admin" },
+	   {role : "readAnyDatabase", db : "admin"}
+   ]
+})
+
+----------------------------------------------------------------------------------------------
+Step 6.2 - Config Level 
+operationProfiling:
+  mode: all
+  slowOpThresholdMs: 200
+----------------------------------------------------------------------------------------------
+(Optional)
+
+mongod --dbpath=DATABASEDIR --profile 2 --slowms 200 --rateLimit 100
+mongod --dbpath=/dbdata01/mongo --profile 2 --slowms 200 --rateLimit 100
+mongod --dbpath=/dbdata01/mongo --profile 2 --slowms 200 
+----------------------------------------------------------------------------------------------
+Step 7 : Session Level
+use admin
+db.setProfilingLevel(2)
+
+use admin
+db.setProfilingLevel(2)
+{ "was" : 2, "slowms" : 200, "sampleRate" : 1, "ok" : 1 }
+
+----------------------------------------------------------------------------------------------
+step 8
+pmm-admin add mongodb --username=pmm --password=Open@123 --query-source=profiler --service-name=PPI-MONGO-03 --host=172.184.9.114 --port=22000
+pmm-admin add mongodb --username=pmm --password=Open@123 --query-source=profiler --service-name=Prod_upi_3 --host=172.181.12.226 --port=22000
+
+
+
+
+pmm-admin inventory remove node --force /service_id/cb1bbe29-73a7-4495-aeed-e67f8f465e14
+
+
+
+
+172.28.103.4
+172.29.103.4
+172.28.103.5
+
+az-cin-indus-upi-prd-mgodb01
+az-sin-indus-upi-prd-mgodb02
+az-cin-indus-upi-prd-mgodb03
+
+
+pmm-admin add mongodb --username=pmm --password=Open@123 --query-source=profiler --service-name=Prod_UPI2 --host=172.182.10.139 --port=22000
+pmm-admin add mongodb --username=pmm --password=Open@123 --query-source=profiler --service-name=LQ_UPI_2 --host=174.3.11.6 --port=22000
+pmm-admin add mongodb --username=pmm --password=Open@123 --query-source=profiler --service-name=LQ_UPI_3 --host=175.1.11.10 --port=22000

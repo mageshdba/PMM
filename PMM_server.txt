@@ -1,0 +1,597 @@
+Install Percona Monitoring and Management
+----------------------------------------
+
+(1) Requirements: Docker¶
+
+
+yum install docker -y
+
+service docker status
+service docker start
+service docker status
+
+/srv
+
+/srv/logs/grafana.log
+
+==============================================
+STEP 1 : CREATE CONTAINER FOR PMM 
+==============================================
+OPTION 1 : Run Docker with volume
+-----------------------------------
+<<Pull the image.¶
+docker pull percona/pmm-server:2
+(or)
+docker pull percona/pmm-server:2.39.0
+
+<<Create a volume:¶
+docker volume create pmm-data
+
+<<Run the image:¶
+docker run --detach --restart always \
+--publish 443:443 \
+-v pmm-data:/srv \  
+--name pmm-server \
+percona/pmm-server:2
+
+<<Change the password for the default admin user.¶ 
+/*For PMM versions 2.27.0 and later:¶*/
+docker exec -t pmm-server change-admin-password M@pdb@123
+
+/*For PMM versions prior to 2.27.0:¶ */
+docker exec -t pmm-server bash -c 'grafana-cli --homepath /usr/share/grafana --configOverrides cfg:default.paths.data=/srv/grafana admin reset-admin-password M@pdb@123'
+
+OPTION 2 : Run Docker with data container
+----------------------------------------
+Create a persistent data container.¶
+
+docker create --volume /srv \
+--name pmm-data \
+percona/pmm-server:2 /bin/true
+
+<<PMM Server expects the data volume to be /srv. Using any other value will result in data loss when upgrading.
+<<To check server and data container mount points:¶
+
+docker inspect pmm-data | grep -i destination && docker inspect pmm-server | grep -i destination
+>> "Destination": "/srv"
+>>"Destination": "/srv" 
+
+
+docker inspect pmm-data | jq '.[0].Mounts' && docker inspect pmm-data | jq '.[0].Mounts'
+
+
+>>  "Type": "volume",
+>>  "Name": "b0299373e51c5b23d5c071a036426cb3570b12eb568e59f7ae5c2eb05f1b4a4c",
+>>  "Source": "/datadb/docker/volumes/b0299373e51c5b23d5c071a036426cb3570b12eb568e59f7ae5c2eb05f1b4a4c/_data",
+>>  "Destination": "/srv",
+>>  "Driver": "local",
+>>  "Mode": "",
+>>  "RW": true,
+>>  "Propagation": ""
+
+
+>>    "Type": "volume",
+>>    "Name": "b0299373e51c5b23d5c071a036426cb3570b12eb568e59f7ae5c2eb05f1b4a4c",
+>>    "Source": "/datadb/docker/volumes/b0299373e51c5b23d5c071a036426cb3570b12eb568e59f7ae5c2eb05f1b4a4c/_data",
+>>    "Destination": "/srv",
+>>    "Driver": "local",
+>>    "Mode": "",
+>>    "RW": true,
+>>    "Propagation": ""
+
+
+
+
+
+<<Run the image.¶
+docker run --detach --restart always \
+--publish 443:443 \
+--volumes-from pmm-data \
+--name pmm-server \
+percona/pmm-server:2
+
+<<Change the password for the default admin user.¶
+    <<For PMM versions 2.27.0 and later:
+docker exec -t pmm-server change-admin-password M@pdb@123
+
+    <<For PMM versions prior to 2.27.0:
+docker exec -t pmm-server bash -c 'grafana-cli --homepath /usr/share/grafana --configOverrides cfg:default.paths.data=/srv/grafana admin reset-admin-password newpass'
+Visit https://localhost:443 to see the PMM user interface in a web browser. (If you are accessing the docker host remotely, replace localhost with the IP or server name of the host.)
+
+
+OPTION 3 : Run Docker with the host directory¶
+-----------------------------------------------------
+This feature is available starting with PMM 2.29.0.
+Pull the image.
+
+docker pull percona/pmm-server:2
+Run the image.
+
+export DATA_DIR=$HOME/srv
+docker run -v $DATA_DIR/srv:/srv -d --restart always --publish 80:80 --publish 443:443 --name pmm-server percona/pmm-server:2
+DATA_DIR is a directory where you want to store the state for PMM.
+Visit https://localhost:443 to see the PMM user interface in a web browser. (If you are accessing the docker host remotely, replace localhost with the IP or server name of the host.)
+==============================================
+STEP 2 : Migrate from data container to host directory/volume¶
+==============================================
+To migrate your PMM from data container to host directory or volume run the following command:
+
+docker cp <containerId>:/srv /target/host/directory
+
+==============================================
+STEP 3 : Backup¶
+==============================================
+<<Stop and rename the pmm-server container. Take a local copy of the pmm-data containers /srv directory.
+<<Grafana plugins have been moved to the data volume /srv since the 2.23.0 version. So if you are upgrading PMM from any version before 2.23.0 and have installed additional plugins then plugins should be installed again after the upgrade.
+
+<<To check used grafana plugins:
+docker exec -it pmm-server ls /var/lib/grafana/plugins
+
+<<Stop the container.
+docker stop pmm-server
+
+<<Move the image.
+docker rename pmm-server pmm-server-backup
+
+<<List the images
+docker ps -a 
+>>CONTAINER ID   IMAGE                  COMMAND                CREATED         STATUS                     PORTS     NAMES
+>>031c3f65266d   b031ff61b727           "/opt/entrypoint.sh"   24 months ago   Exited (0) 5 minutes ago             pmm-server-backup
+
+<<Create a subdirectory (e.g., pmm-data-backup) and move to it.
+mkdir pmm-data-backup && cd pmm-data-backup
+
+031c3f65266d
+
+<<Backup the data.
+/*Using ID */
+docker cp 031c3f65266d:/srv/ /datadb/pmm-data-backup/
+/*Using Names */
+docker cp pmm-data:/srv .
+docker cp pmm-server:/srv .
+
+==============================================
+STEP 4 : Upgrade¶
+==============================================
+Stop the running container.
+Backup (rename) the container and copy data.
+Pull the latest Docker image.
+Run it.
+
+Important
+Downgrades are not possible. To go back to using a previous version you must have created a backup of it before upgrading.
+Tip
+To see what release you are running, use the PMM Upgrade panel on the Home Dashboard, or run:
+
+
+docker exec -it pmm-server  curl -ku admin:admin https://localhost/v1/version
+(If you are accessing the docker host remotely, replace localhost with the IP or server name of the host.)
+
+<<Stop the container.
+docker stop pmm-server
+
+<<Perform a backup.
+
+<<Pull the latest image.
+docker pull percona/pmm-server:2
+
+<<Rename the original container
+docker rename pmm-server pmm-server-old
+
+<<Run it.
+docker run \
+--detach \
+--restart always \
+--publish 443:443 \
+--volumes-from pmm-data \
+--name pmm-server \
+percona/pmm-server:2
+
+docker ps -a 
+==============================================
+STEP 5 : Restore¶
+==============================================
+Stop and remove the container.
+Restore (rename) the backup container.
+Restore saved data to the data container.
+Restore permissions to the data.
+Important
+
+You must have a backup to restore from.
+
+<<Stop the container.
+docker stop pmm-server
+
+<<Remove it.
+docker rm pmm-server
+
+<<Revert to the saved image.
+docker rename pmm-server-backup pmm-server
+(or)
+docker tag percona/pmm-server:2.39.0 percona/pmm-server:2.39.0-copy
+
+<<Change directory to the backup directory (e.g. pmm-data-backup).
+<<Remove Victoria Metrics data folder.
+docker run --rm --volumes-from pmm-data -it percona/pmm-server:2 rm -r /srv/victoriametrics/data
+
+<<Copy the data.
+docker cp /srv pmm-data:/
+(or)
+docker cp /datadb/pmm-data-backup/srv/. pmm-data:/srv
+
+<<Restore permissions.
+docker run --rm --volumes-from pmm-data -it percona/pmm-server:2 chown -R root:root /srv && \
+docker run --rm --volumes-from pmm-data -it percona/pmm-server:2 chown -R pmm:pmm /srv/alertmanager && \
+docker run --rm --volumes-from pmm-data -it percona/pmm-server:2 chown -R root:pmm /srv/clickhouse && \
+docker run --rm --volumes-from pmm-data -it percona/pmm-server:2 chown -R grafana:grafana /srv/grafana && \
+docker run --rm --volumes-from pmm-data -it percona/pmm-server:2 chown -R pmm:pmm /srv/logs && \
+docker run --rm --volumes-from pmm-data -it percona/pmm-server:2 chown -R postgres:postgres /srv/postgres14 && \
+docker run --rm --volumes-from pmm-data -it percona/pmm-server:2 chown -R pmm:pmm /srv/prometheus && \
+docker run --rm --volumes-from pmm-data -it percona/pmm-server:2 chown -R pmm:pmm /srv/victoriametrics && \
+docker run --rm --volumes-from pmm-data -it percona/pmm-server:2 chown -R postgres:postgres /srv/logs/postgresql.log
+
+<<Start the image.
+docker start pmm-server
+
+==============================================
+STEP 6 : Remove¶
+==============================================
+Stop the container.
+Remove (delete) both the server and data containers.
+Remove (delete) both images.
+Caution
+
+These steps delete the PMM Server Docker image and any accumulated PMM metrics data.
+
+Stop pmm-server container.
+
+
+docker stop pmm-server
+Remove containers.
+
+
+docker rm pmm-server pmm-data
+Remove the image.
+
+
+docker rmi $(docker images | grep "percona/pmm-server" | awk {'print $3'})
+===========================
+Environment variables¶
+===========================
+Use the following Docker container environment variables (with -e var=value) to set PMM Server parameters.
+
+Variable                Description
+DISABLE_UPDATES Disables a periodic check for new PMM versions as well as ability to apply upgrades using the UI
+DISABLE_TELEMETRY       Disable built-in telemetry and disable STT if telemetry is disabled.
+METRICS_RESOLUTION      High metrics resolution in seconds.
+METRICS_RESOLUTION_HR   High metrics resolution (same as above).
+METRICS_RESOLUTION_MR   Medium metrics resolution in seconds.
+METRICS_RESOLUTION_LR   Low metrics resolution in seconds.
+DATA_RETENTION  The number of days to keep time-series data.
+N.B. This must be set in a format supported by time.ParseDuration
+and represent the complete number of days.
+The supported units are ns, us (or µs), ms, s, m, and h.
+The value must be a multiple of 24, e.g., for 90 days 2160h (90 * 24).
+ENABLE_VM_CACHE Enable cache in VM.
+DISABLE_ALERTING        Disables built-in Percona Alerting, which is enabled by default.
+ENABLE_AZUREDISCOVER    Enable support for discovery of Azure databases.
+DISABLE_BACKUP_MANAGEMENT       Disables Backup Management, which is enabled by default.
+ENABLE_DBAAS    Enable DBaaS features.
+PMM_DEBUG       Enables a more verbose log level.
+PMM_TRACE       Enables a more verbose log level including trace-back information.
+PMM_PUBLIC_ADDRESS      External IP address or the DNS name on which PMM server is running.
+The following variables are also supported but values passed are not verified by PMM. If any other variable is found, it will be considered invalid and the server won’t start.
+
+Variable        Description
+_, HOME, HOSTNAME, LANG, PATH, PWD, SHLVL, TERM Default environment variables.
+GF_*    Grafana environment variables.
+VM_*    VictoriaMetrics’ environment variables.
+SUPERVISOR_     supervisord environment variables.
+KUBERNETES_     Kubernetes environment variables.
+MONITORING_     Kubernetes monitoring environment variables.
+PERCONA_TEST_   Unknown variable but won’t prevent the server starting.
+PERCONA_TEST_DBAAS      Deprecated. Use ENABLE_DBAAS.
+Preview environment variables¶
+Warning
+
+The PERCONA_TEST_* environment variables are experimental and subject to change. It is recommended that you use these variables for testing purposes only and not on production.
+
+Variable        Description
+PERCONA_TEST_SAAS_HOST  SaaS server hostname.
+PERCONA_TEST_PMM_CLICKHOUSE_ADDR        Name of the host and port of the external ClickHouse database instance.
+PERCONA_TEST_PMM_CLICKHOUSE_DATABASE    Database name of the external ClickHouse database instance.
+​​PERCONA_TEST_PMM_CLICKHOUSE_POOL_SIZE The maximum number of threads in the current connection thread pool. This value cannot be bigger than max_thread_pool_size.
+PERCONA_TEST_PMM_CLICKHOUSE_BLOCK_SIZE  The number of rows to load from tables in one block for this connection.
+Tips¶
+To Disable the Home Dashboard PMM Upgrade panel you can either add -e DISABLE_UPDATES=true to the docker run command (for the life of the container) or navigate to PMM → PMM Settings → Advanced Settings and disable “Check for Updates” (can be turned back on by any admin in the UI).
+
+Eliminate browser certificate warnings by configuring a trusted certificate.
+
+You can optionally enable an (insecure) HTTP connection by adding --publish 80:80 to the docker run command. However, running PMM insecure is not recommended. You should also note that PMM Client requires TLS to communicate with the server, only working on a secure port.
+
+Isolated hosts¶
+If the host where you will run PMM Server has no internet connection, you can download the Docker image on a separate (internet-connected) host and securely copy it.
+
+On an internet-connected host, download the Docker image and its checksum file.
+
+
+wget https://downloads.percona.com/downloads/pmm2/2.40.0/docker/pmm-server-2.40.0.docker
+wget https://downloads.percona.com/downloads/pmm2/2.40.0/docker/pmm-server-2.40.0.sha256sum
+Copy both files to where you will run PMM Server.
+
+Open a terminal on the PMM Server host.
+
+(Optional) Check the Docker image file integrity.
+
+
+shasum -ca 256 pmm-server-2.40.0.sha256sum
+Load the image.
+
+
+docker load -i pmm-server-2.40.0.docker
+Run the container as if your image is already pulled using your desired method for a storage volume (you can step over any docker pull commands as the image has been pre-staged).
+
+
+
+
+
+
+(2) Create data volume:
+
+sudo  docker create -v /srv --name pmm-data percona/pmm-server:2 /bin/true
+
+sudo  docker create -v /srv --name pmm-data percona/pmm-server:2 /bin/true
+Unable to find image 'percona/pmm-server:2' locally
+2: Pulling from percona/pmm-server
+2d473b07cdd5: Pull complete
+cb234533d813: Pull complete
+Digest: sha256:ff0bb20cba0dbfcc8929dbbba0558bb01acc933ec593717727707dce083441b4
+Status: Downloaded newer image for percona/pmm-server:2
+25eecceb5f12de159613d6ddaf5aab873901b4a528eca8fc8b432d94cade34d0
+
+docker ps -a
+
+sudo docker run -d -p 80:80 -p 443:443 --volumes-from pmm-data --name pmm-server --restart always percona/pmm-server:2
+sudo docker run -d -p 80:80 -p 443:443 --volumes-from pmm-data --name pmm-server --restart always percona/pmm-server:2
+
+ 
+----------------------------
+Rough
+
+docker run -d --name pmm-server2 -v /srv pmm-server:latest
+docker run -d --name pmm-server2 -v /srv:/path/inside/container pmm-server:latest
+docker run -d --name pmm-server2 -v /srv:/srv pmm-server:latest
+
+
+sudo  docker create -v /srv --name pmm-data percona/pmm-server:2 /bin/true
+
+
+
+http://3.109.229.121
+
+Step 2: Install Client
+-------------------------------
+
+
+Step 3: Email Alters
+-------------------------------
+AWS SES smtp server credentials,
+
+IAM User Name	ses-smtp-pmm-alerts
+Smtp Username	AKIAXLFABRHLQW5DSDII
+Smtp Password	BJWr8G+EYSRciTY2mCVDmfR59RspacGkYslnQe1Ge7OC
+
+docker exec -it pmm-server /bin/bash
+
+cp /etc/grafana/grafana.ini /etc/grafana/grafana.ini_`date +%Y_%m_%d.%H.%M.%S`
+cp /usr/share/grafana/conf/defaults.ini /usr/share/grafana/conf/defaults.ini_`date +%Y_%m_%d.%H.%M.%S`
+
+/etc/grafana/grafana.ini - Modify here 
+/usr/share/grafana/conf/defaults.ini  - Default file not to be modified
+
+
+vi /etc/grafana/grafana.ini 
+
+[root@e3ef304a1eca grafana] # cat /etc/grafana/grafana.ini |grep -A9 smtp
+[smtp]
+enabled = true
+host = email-smtp.ap-south-1.amazonaws.com:587
+user = AKIAXLFABRHLQW5DSDII
+password = BJWr8G+EYSRciTY2mCVDmfR59RspacGkYslnQe1Ge7OC
+cert_file =
+key_file =
+skip_verify = true
+from_address = pmm@m2pfintech.com
+from_name = PMM
+
+
+
+
+
+
+--STEP 4
+save changes and exit from containers bash
+--restart container
+docker restart pmm-server
+
+go to Grafana “login” page http://PMM.SERVER.IP/graph/login
+click “Sign up”
+enter another email and press “sign up” button
+find email in your mail client
+
+====================================================================
+sum(pg_stat_activity_count{datname!~"template.*|postgres"})
+> bool pg_settings_max_connections * 90 / 100
+
+
+
+=====================================================================
+To CHANGE PMM data dir 
+----------------
+
+https://www.guguweb.com/2019/02/07/how-to-move-docker-data-directory-to-another-location-on-ubuntu/
+
+-----------------------------------------------------------------------------------------------------------
+
+ psql --port 5432 -U postgres
+
+ 
+
+/srv/postgres14/postgresql.conf
+
+max_connections = 500                   # (change requires restart)
+shared_buffers = 4096MB                 # min 128kB
+dynamic_shared_memory_type = posix      # the default is the first option
+max_wal_size = 1GB
+min_wal_size = 80MB
+log_destination = 'stderr'              # Valid values are combinations of
+logging_collector = on                  # Enable capturing of stderr and csvlog
+log_directory = 'log'                   # directory where log files are written,
+log_filename = 'postgresql-%a.log'      # log file name pattern,
+log_rotation_age = 1d                   # Automatic rotation of logfiles will
+log_rotation_size = 0                   # Automatic rotation of logfiles will
+log_truncate_on_rotation = on           # If on, an existing log file with the
+log_line_prefix = '%m [%p] '            # special values:
+log_timezone = 'UTC'
+datestyle = 'iso, mdy'
+timezone = 'UTC'
+lc_messages = 'C'                       # locale for system error message
+lc_monetary = 'C'                       # locale for monetary formatting
+lc_numeric = 'C'                        # locale for number formatting
+lc_time = 'C'                           # locale for time formatting
+default_text_search_config = 'pg_catalog.english'
+
+docker exec -it pmm-server bash
+tail -f /srv/logs/pmm-managed.log
+
+pmm-managed=> select agent_id from agents where agent_type = 'pmm-agent' and version is null;
+ agent_id
+----------
+(0 rows)
+
+
+[root@ip-172-150-0-56 run]# docker ps -a
+CONTAINER ID   IMAGE                  COMMAND                CREATED         STATUS                       PORTS                                      NAMES
+1d50fa914687   ubuntu                 "bash"                 14 months ago   Exited (137) 14 months ago                                              determined_lamport
+0def8dc9745e   ubuntu                 "bash"                 14 months ago   Exited (0) 14 months ago                                                test
+c1841b94c1dd   percona/pmm-server:2   "/bin/true"            14 months ago   Created                                                                 pmm-data2
+031c3f65266d   percona/pmm-server:2   "/opt/entrypoint.sh"   23 months ago   Up 5 hours (unhealthy)       0.0.0.0:80->80/tcp, 0.0.0.0:443->443/tcp   pmm-server
+25eecceb5f12   percona/pmm-server:2   "/bin/true"            23 months ago   Created                                                                 pmm-data
+
+
+docker logs --tail=100 031c3f65266d
+docker logs --tail=100
+==================================
+
+
+docker run --mount source=[volume_name],destination=[path_in_container] [docker_image]
+
+ sudo docker run -d -p 80:80 -p 443:443 --volumes-from pmm-data --name pmm-server --restart always percona/pmm-server:2
+031c3f65266d718c151d5a8211b049c8ecbea8a687e019d1ba6c0fd6fd6f18ed
+[19:25] Susikanth Thirugnanam
+
+docker run -d -p 80:80 -p 443:443 --volumes-from pmm-data --name pmm-server --restart always percona/pmm-server:2
+
+[root@ip-172-150-0-56 docker]# docker volume inspect 6b44a0c76a40d7fad0d50e1e2440d6ec4312171a3cee167f9474889bd94330d4
+[
+    {
+        "CreatedAt": "2022-10-13T15:44:41+05:30",
+        "Driver": "local",
+        "Labels": null,
+        "Mountpoint": "/srv/volumes/6b44a0c76a40d7fad0d50e1e2440d6ec4312171a3cee167f9474889bd94330d4/_data",
+        "Name": "6b44a0c76a40d7fad0d50e1e2440d6ec4312171a3cee167f9474889bd94330d4",
+        "Options": null,
+        "Scope": "local"
+    }
+]
+[root@ip-172-150-0-56 docker]# docker volume inspect f23bc047cd864f8c21ec5fe1a5b4f9a1b1f94048b551dbab26ee6e504118fef3
+[
+    {
+        "CreatedAt": "2022-10-13T15:44:41+05:30",
+        "Driver": "local",
+        "Labels": null,
+        "Mountpoint": "/srv/volumes/f23bc047cd864f8c21ec5fe1a5b4f9a1b1f94048b551dbab26ee6e504118fef3/_data",
+        "Name": "f23bc047cd864f8c21ec5fe1a5b4f9a1b1f94048b551dbab26ee6e504118fef3",
+        "Options": null,
+        "Scope": "local"
+    }
+]
+
+
+[19:26] Susikanth Thirugnanam
+
+
+docker run -d -p 80:80 -p 443:443 --volumes-from pmm-data --name pmm-server --restart always percona/pmm-server:2
+
+docker volume create pmm-data
+docker run -d -p 80:80 -p 443:443 --name pmm_server2 percona/pmm-server:2
+
+docker run -d -p 80:80 -p 443:443 --name pmm-server-new  -v f23bc047cd864f8c21ec5fe1a5b4f9a1b1f94048b551dbab26ee6e504118fef3:/srv --restart always percona/pmm-server:2 --env PMM_SERVER_USER=admin  --env PMM_SERVER_PASSWORD=M@pdb@123 
+
+
+
+-------------------
+docker run --name pmm-server -e PERCONA_TEST_POSTGRES_ADDR=$ADDRESS:$PORT-e PERCONA_TEST_POSTGRES_DBNAME=$DBNAME-e PERCONA_TEST_POSTGRES_USERNAME=$USER-e PERCONA_TEST_POSTGRES_DBPASSWORD=$PASSWORD-e PERCONA_TEST_POSTGRES_SSL_MODE=$SSL_MODE-e PERCONA_TEST_POSTGRES_SSL_CA_PATH=$CA_PATH-e PERCONA_TEST_POSTGRES_SSL_KEY_PATH=$KEY_PATH-e PERCONA_TEST_POSTGRES_SSL_CERT_PATH=$CERT_PATH -e PERCONA_TEST_PMM_DISABLE_BUILTIN_POSTGRES=true-e GF_DATABASE_URL=$GF_DATABASE_URL-e GF_DATABASE_SSL_MODE=$GF_SSL_MODE-e GF_DATABASE_CA_CERT_PATH=$GF_CA_PATH-e GF_DATABASE_CLIENT_KEY_PATH=$GF_KEY_PATH-e GF_DATABASE_CLIENT_CERT_PATH=$GF_CERT_PATHpercona/pmm-server:2
+
+
+docker exec -t pmm_server2 bash -c  'ln -s /srv/grafana /usr/share/grafana/datadb; grafana-cli --homepath /usr/share/grafana admin reset-admin-password Open@123'
+
+docker volume create pmm-data
+docker run --detach --restart always --publish 443:443 -v pmm-data:/srv --name pmm-server percona/pmm-server:2
+
+docker run -d --restart always \
+--publish 443:443 \
+--volumes-from pmm-data \
+--name pmm_server2 \
+--env PMM_SERVER_USER=admin \
+--env PMM_SERVER_PASSWORD=M@pdb@123 \
+percona/pmm-server:2
+
+
+docker run -d -p 80:80 -p 443:443 --name pmm-server-new --restart always -v f23bc047cd864f8c21ec5fe1a5b4f9a1b1f94048b551dbab26ee6e504118fef3:/srv --env PMM_SERVER_USER=admin --env PMM_SERVER_PASSWORD=M@pdb@123 percona/pmm-server:2
+
+docker cp pmm-data:/srv/ .
+
+docker rename  pmm-server-backup pmm-server
+
+
+------------------------
+docker run --detach --restart always --publish 443:443 -v pmm-data:/srv --name pmm-server  percona/pmm-server:2
+
+docker run --detach --restart always --publish 443:443 --volumes-from pmm-data --name pmm-server percona/pmm-server:2
+
+    
+
+
+031c3f65266d
+pmm-data
+
+
+docker run --rm --volumes-from 031c3f65266d -it percona/pmm-server:2 rm -r /srv/victoriametrics/data
+
+docker cp srv 031c3f65266d:/
+
+
+locate 'victoriametrics/data' |grep -v 'pmm-data-backup' |less
+
+
+du -sh /datadb/pmm-data-backup/srv/victoriametrics/data/
+du -sh /datadb/docker/overlay2/079794629b3745f229d8eb2be5a546868e5c286ea3dea25fb3ccac27625b14a8/diff/srv/victoriametrics/data
+du -sh /datadb/docker/volumes/pmm-data/_data/victoriametrics/data/
+
+
+/datadb/docker/volumes/faf3b1257171e3d9a4c2203a9fe4dddffe44ff78e51c91d3c709241db8d2b3a1
+
+nohup docker cp srv pmm-data:/ &
+
+nohup docker cp srv pmm-data:/srv &
+
+docker inspect pmm-data | grep Destination
+docker inspect pmm-server | grep Destination
+
+docker inspect pmm-data | jq '.[0].Mounts' 
+  docker inspect pmm-server | jq '.[0].Mounts'
+
+
+
+Error response from daemon: Error processing tar file(exit status 1): cannot overwrite non-directory "/srv/clickhouse/data/pmm/metrics" with directory "/"

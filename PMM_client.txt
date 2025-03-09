@@ -1,0 +1,409 @@
+PMM Credentials 
+----------------------
+admin
+M@pdb@123
+
+--MASTER - DB Monitoring
+----------------------	
+172.150.0.56
+
+nc -zv  172.150.0.56  443
+    
+
+(Optional) REMOVE OLD 
+--------------------
+rpm -qa | grep -i pmm
+
+yum remove pmm2-client-* -y
+
+
+
+step 1: INSTALL 
+-------------------
+yum repolist enabled
+
+yum download https://downloads.percona.com/downloads/pmm2/2.40.1/binary/redhat/8/x86_64/pmm2-client-2.40.1-6.el8.x86_64.rpm
+(or)
+sudo yum install https://repo.percona.com/yum/percona-release-latest.noarch.rpm -y
+percona-release setup ps80 -y
+sudo yum install pmm2-client -y 
+
+rpm -qa | grep -i pmm
+
+
+Step 2: 
+--------------------
+pmm-admin config --server-insecure-tls --server-url=https://admin:M@pdb@123@172.150.0.56 --force
+pmm-admin config --server-insecure-tls --server-url=https://admin:{F"$C2GE7,T=?F@db-observability.m2pfintech.dev --force
+
+pmm-admin config --server-insecure-tls --server-url="https://admin:F\$C2GE7,T=?F@db-observability.m2pfintech.dev" --force
+
+
+
+
+##############################################################################################################################
+
+
+==========================================
+//MYSQL
+=========================================
+mysql -u db2dba -p -v
+select user,host from mysql.user where user='pmm'; 
+CREATE USER 'pmm'@'%' IDENTIFIED BY 'Open@123';GRANT SELECT, CREATE TEMPORARY TABLES,PROCESS, SUPER,RELOAD, REPLICATION CLIENT ON *.* TO 'pmm'@'%' ;show grants for pmm;flush privileges;
+
+GRANT SELECT, PROCESS, REPLICATION CLIENT, RELOAD, BACKUP_ADMIN ON *.* TO 'pmm'@'127.0.0.1';
+
+
+
+
+
+show global variables where variable_name IN ('performance_schema','innodb_monitor_enable');
+set global innodb_monitor_enable=All;
+
+
+
+step 5: CLIENT Server 
+--------------------
+
+HOST=$(hostname -i); NAME=$(hostname -f) ;echo $HOST ; echo $NAME
+
+pmm-admin add mysql --query-source=perfschema --max-query-length=10000 --username=pmm --password=Open@123  --service-name=${NAME} --host=${HOST} --port=2201
+
+--optional
+pmm-admin add mysql --username=pmm --password=M@pdb@123 --server-insecure-tls --query-source=perfschema --socket=/var/lib/mysql/mysql.socket
+Table statistics collection disabled (the limit is 1000, the actual table count is 34172).
+
+pmm-admin add mysql --query-source=perfschema --max-query-length=10000 --username=pmm --password=Open@123  --service-name=${NAME} --host=${HOST} --port=2201 --server-url=https://admin:M@pdb@123@172.150.0.56
+
+pmm-admin add mysql --query-source=perfschema --max-query-length=10000 --username=pmm --password=Open@123  --service-name=ntt-chn-syn-auakua-fsfb-prd-txn-mysql-01.m2pfintech.com --host=10.120.4.34 --port=2201 --server-url=https://admin:M@pdb@123@172.150.0.56
+
+
+pmm-admin add mysql --disable-tablestats-limit=<LIMIT>
+pmm-admin add mysql --disable-tablestats-limit=2000
+
+
+=========================================
+//POSTGRES
+=========================================
+
+//Step 1 : 
+--------------------
+
+
+psql -U db2dba --port 5665 --host 127.0.0.1 postgres 
+
+CREATE USER pmmusr WITH ENCRYPTED PASSWORD 'Open@123';
+GRANT pg_monitor to pmmusr;
+CREATE EXTENSION pg_stat_monitor; CREATE EXTENSION pg_stat_statements;
+
+
+psql -h 174.3.11.4 -p 5665 -U pmmusr -d postgres
+Password for user pmmusr: 
+
+//Step 2 : 
+--------------------
+If you are not using localhost, but using the IP address of the PostgreSQL server while enabling monitoring in the next steps, you should ensure to add appropriate entries to enable connections from the IP and the pmm in the pg_hba.conf file.
+
+$ echo "host    all             pmmusr        10.81.67.126/32        md5" >> $PGDATA/pg_hba.conf
+
+select pg_reload_conf()
+
+
+//Step 3 : 
+--------------------
+--With QAN
+With PMM2, there is an additional step needed to enable QAN. You should create a database with the same name as the monitoring user ( pmm here). 
+And then, you should create the extension: pg_stat_statements in that database. 
+This behavior is going to change on the next release so that you can avoid creating the database.
+
+--Step 1 : 
+Create the database with the same name as the monitoring user. Create the extension: pg_stat_statements in the database.
+Login as admin
+
+sudo -u postgres psql --port 5665
+
+//Step 4 : pg_stat_statements
+--------------------
+psql -U db2dba --host 127.0.0.1 --port 5665 -c "CREATE EXTENSION pg_stat_statements" -d pmmusr
+
+shared_preload_libraries = 'pg_stat_statements'
+track_activity_query_size = 5000
+pg_stat_statements.track = all
+track_io_timing = on
+
+
+
+//Step 6 : pg_stat_monitor
+--------------------
+yum install percona-pg-stat-monitor14 -y
+pg_stat_monitor_14.x86_64
+psql -U db2dba --host 127.0.0.1 --port 5665 -c "CREATE EXTENSION pg_stat_monitor" -d pmmusr
+
+ALTER SYSTEM SET shared_preload_libraries = 'pg_stat_monitor';
+
+shared_preload_libraries = 'pg_stat_monitor'
+
+#RESTART
+sudo systemctl restart postgresql-14
+
+CREATE EXTENSION pg_stat_monitor;
+
+SELECT DISTINCT userid::regrole, pg_stat_monitor.datname, substr(query,0, 50) AS query, calls, bucket, bucket_start_time, queryid, client_ip FROM pg_stat_monitor, pg_database WHERE pg_database.oid = oid;
+
+//Step 7 : Add QAN
+--------------------
+HOST=$(hostname -i) ;NAME=$(hostname -f) ;echo $HOST ; echo $NAME
+
+pmm-admin add postgresql --username=pmmusr --password=Open@123 --service-name=${NAME} --host=${HOST} --port=5665 --query-source="pgstatmonitor"
+
+
+=========================================
+//MONGODB
+=========================================
+
+Step 6.1 - Set Profiling
+--------------------
+mongosh -u db2dba --password --port 22000 
+ 
+use admin ;
+ rs.secondaryOk();
+
+db.getUsers();
+
+<<Create roles with privileges for backups and QAN¶
+
+
+db.getSiblingDB("admin").dropUser('pmm');
+
+
+
+db.getSiblingDB("admin").createRole({
+    role: "explainRole",
+    privileges: [{
+        resource: {
+            db: "",
+            collection: ""
+            },
+        actions: [
+            "listIndexes",
+            "listCollections",
+            "dbStats",
+            "dbHash",
+            "collStats",
+            "find"
+            ]
+        }],
+    roles:[]
+})
+
+db.getSiblingDB("admin").createRole({
+"role": "pbmAnyAction",
+"privileges": [{
+"resource": {
+"anyResource": true
+},
+"actions": [
+"anyAction"
+]
+}],
+"roles": []
+});
+
+db.runCommand({
+grantPrivilegesToRole: "explainRole",
+privileges: [{
+"resource": {
+"db": "admin",
+"collection": "system.profile"
+},
+"actions": [
+"indexStats",
+"dbStats",
+"collStats"
+]
+}]
+})
+
+
+<<Create/update user and assign created roles¶
+
+db.getSiblingDB("admin").createUser({
+user: "pmm",
+pwd: "Open@123",
+roles: [
+{ role: "explainRole", db: "admin" },
+{ role: "clusterMonitor", db: "admin" },
+{ role: "read", db: "local" },
+{ "db" : "admin", "role" : "readWrite", "collection": "" },
+{ "db" : "admin", "role" : "backup" },
+{ "db" : "admin", "role" : "clusterMonitor" },
+{ "db" : "admin", "role" : "restore" },
+{ "db" : "admin", "role" : "pbmAnyAction" }
+]
+})
+
+db.getSiblingDB("admin").updateUser("pmm", {
+roles: [
+{ role: "explainRole", db: "admin" },
+{ role: "clusterMonitor", db: "admin" },
+{ role: "read", db: "local" },
+{ "db" : "admin", "role" : "readWrite", "collection": "" },
+{ "db" : "admin", "role" : "backup" },
+{ "db" : "admin", "role" : "clusterMonitor" },
+{ "db" : "admin", "role" : "restore" },
+{ "db" : "admin", "role" : "pbmAnyAction" }
+]
+})
+
+
+
+db.getSiblingDB("admin").getUser('pmm');
+
+Step 7 : Session Level
+--------------------
+mongo -u db2dba --port 22000 -p
+use admin;
+db.getProfilingStatus();
+db.getProfilingLevel();
+
+db.runCommand( { profile: -1 } );
+db.runCommand( { profile: 2, slowms: 100, ratelimit: 1 } );
+
+db.runCommand( { profile: 2, slowms: 200, ratelimit: 1 } );
+
+db.setProfilingLevel(2);
+db.setProfilingLevel(2, {slowms: 200})
+db.setProfilingLevel(2, { slowms: 200, rateLimit: 1 });
+
+db.getProfilingStatus();
+db.getProfilingLevel();
+
+/*OPTIONAL */
+db.getSiblingDB('admin').runCommand( { setParameter: 1, "profilingRateLimit": 100 } );
+>>{ "was" : 1, "ok" : 1 }
+db.getSiblingDB('admin').runCommand( { getParameter: 1, "profilingRateLimit": 1 } );
+>>{ "profilingRateLimit" : 100, "ok" : 1 }
+
+
+Step 6.2 - Config Level 
+--------------------
+echo "rs.secondaryOk()" > /etc/mongorc.js
+chmod 644 /etc/mongorc.js
+
+cat /etc/mongorc.js
+
+rs.secondaryOk()
+
+cat /etc/mongod.conf 
+
+operationProfiling:
+  mode: all
+  slowOpThresholdMs: 200
+  rateLimit: 100 
+
+cp /etc/mongod.conf  /etc/mongod.conf_07022024
+
+    sed -i 's/#operationProfiling:/operationProfiling:\n  mode: all\n  slowOpThresholdMs: 200\n  rateLimit: 100/' /etc/mongod.conf
+
+step 8
+--------------------
+HOST=$(hostname -i) ; NAME=$(hostname -f) ; echo $HOST ; echo $NAME
+
+pmm-admin add mongodb --username=pmm --password=Open@123  --query-source=profiler --service-name=${NAME} --host=${HOST} --port=22000
+
+/* (Optional) */
+
+mongod --dbpath=DATABASEDIR --profile 2 --slowms 200 --rateLimit 100
+mongod --dbpath=/dbdata01/mongo --profile 2 --slowms 200 --rateLimit 100
+mongod --dbpath=/dbdata01/mongo --profile 2 --slowms 200 
+
+-----------------------------------------------------------------------------------------------------------------------
+
+Find
+--------------
+pmm-admin list
+pmm-admin inventory list nodes
+pmm-admin inventory list nodes |grep -i ${HOST}
+
+pmm-admin inventory list nodes |grep -i 174.3.11.4
+GENERIC_NODE  aws-ind-aps1-m2p-r360-dr-pgsqldb02.m2pfintech.com 174.3.11.4      /node_id/c42c4be4-b725-4b88-afdf-0db05f3e98ef
+
+
+
+
+TO REMOVE 
+------------
+pmm-admin inventory remove node --force  /node_id/ed10bfd2-3d81-4ecb-9e47-ee774a1d7d13
+pmm-admin inventory remove node --force  /node_id/4c92eec8-655a-433b-b2ae-c8273e71f28c
+pmm-admin inventory remove node --force  /node_id/f3b298e1-f22e-409a-b6f1-36856cd03b6a
+
+		 
+(or)
+
+pmm-admin remove postgresql(Service type) postgres(Service name)
+pmm-admin remove mongodb indus_mongo_2
+
+service type : mysql,mongodb,postgresql,proxysql,haproxy,external
+
+
+287d3c3f-de04-47eb-a6c4-b30235487021
+
+-------------------------------------------------------------------------------------------
+//One shot
+
+nc -zv 172.150.0.56 443
+    
+>>MYSQL 
+sudo yum remove pmm2-client -y && sudo yum install pmm2-client -y  && pmm-admin config --server-insecure-tls --server-url=https://admin:M@pdb@123@172.150.0.56 --force &&  HOST=$(hostname -i); NAME=$(hostname -f) ;echo $HOST ; echo $NAME &&  pmm-admin add mysql --query-source=perfschema --max-query-length=10000 --username=pmm --password=Open@123  --service-name=${NAME} --host=${HOST} --port=2201 && pmm-admin list 
+
+
+pmm-admin config --server-insecure-tls --server-url=https://admin:M@pdb@123@172.150.0.56 --force
+
+HOST=$(hostname -i); NAME=$(hostname -f) ;echo $HOST ; echo $NAME
+
+pmm-admin add mysql --query-source=perfschema --max-query-length=10000 --username=pmm --password=Open@123  --service-name=${NAME} --host=${HOST} --port=2201
+
+
+
+pmm-admin list 
+-------------------------------------------------------
+>>MONGODB 
+
+sudo yum remove pmm2-client -y && sudo yum install pmm2-client -y  && pmm-admin config --server-insecure-tls --server-url=https://admin:M@pdb@123@172.150.0.56 --force &&  HOST=$(hostname -i); NAME=$(hostname -f) ;echo $HOST ; echo $NAME &&  pmm-admin add mongodb --username=pmm --password=Open@123  --query-source=profiler --service-name=${NAME} --host=${HOST} --port=22000 && pmm-admin list 
+
+pmm-admin add mongodb --username=pmm --password=Open@123  --query-source=profiler --service-name=${NAME} --host=${HOST} --port=22000
+
+pmm-admin config --server-insecure-tls --server-url=https://admin:M@pdb@123@172.150.0.56 --force
+HOST=$(hostname -i); NAME=$(hostname -f) ;echo $HOST ; echo $NAME
+pmm-admin add mongodb --username=pmm --password=Open@123  --query-source=profiler --service-name=restore-server --host=172.166.7.14 --port=32000
+
+pmm-admin list 
+db.changeUserPassword("pmm", "Open@123");
+
+
+
+
+ cat /etc/mongod.conf  |grep -i 'operation'
+
+ cat /etc/mongod.conf  |grep -i '#operation'
+---------------------------------------
+>>POSTGRES 
+
+sudo yum remove pmm2-client -y && sudo yum install pmm2-client -y  && pmm-admin config --server-insecure-tls --server-url=https://admin:M@pdb@123@172.150.0.56 --force &&  HOST=$(hostname -i); NAME=$(hostname -f) ;echo $HOST ; echo $NAME && pmm-admin add postgresql --username=pmmusr --password=Open@123 --service-name=${NAME} --host=${HOST} --port=5665 --query-source="pgstatmonitor" && pmm-admin list 
+
+pmm-admin config --server-insecure-tls --server-url=https://admin:M@pdb@123@172.150.0.56 --force
+
+HOST=$(hostname -i); NAME=$(hostname -f) ;echo $HOST ; echo $NAME
+
+pmm-admin add postgresql --username=pmmusr --password=Open@123 --service-name=${NAME} --host=${HOST} --port=5665 --query-source="pgstatmonitor"
+pmm-admin list 
+
+
+
+sudo yum install https://repo.percona.com/yum/percona-release-latest.noarch.rpm -y && percona-release setup ps80 -y && sudo yum install pmm2-client -y 
+
+sudo yum remove pmm2-client -y && sudo yum install pmm2-client -y  && pmm-admin config --server-insecure-tls --server-url=https://admin:M@pdb@123@172.150.0.56 --force &&  HOST=$(hostname -i); NAME=$(hostname -f) ;echo $HOST ; echo $NAME &&  pmm-admin add postgresql --username=pmmusr --password=Open@123 --service-name=${NAME} --host=${HOST} --port=5665 --query-source="pgstatmonitor"  && pmm-admin list 
+
+
+echo "pg_stat_statements.track = all" >> /var/lib/pgsql/14/data/postgresql.conf
+echo "track_io_timing = on" >> /var/lib/pgsql/14/data/postgresql.conf

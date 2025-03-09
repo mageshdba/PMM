@@ -1,0 +1,136 @@
+PMM 
+Master server - client server 
+
+
+MASTER - DB Monitoring	
+3.109.229.121/172.150.0.56
+
+CLIENT - CHN	
+13.71.61.189 /175.1.11.8
+
+
+
+##########################################
+Check if exists 
+----------------
+rpm -qa | grep -i pmm
+
+(Optional) REMOVE OLD 
+--------------------
+yum remove pmm2-client-2.21.0-6.el8.x86_64
+
+step 1: INSTALL 
+-------------------
+sudo yum install https://repo.percona.com/yum/percona-release-latest.noarch.rpm -y
+
+step 2: Enable Percona Server 8.0 repository
+----------------------------
+ percona-release setup ps80 -y
+
+step 3: Install pmm2-client
+----------------------------
+sudo yum install pmm2-client -y
+
+step 4: 
+port 443 to be opened for db server which is to be monitored
+telnet 3.109.229.121 443
+telnet 172.150.0.56 443
+
+step 5
+port 3306 to be opened in db server from pmm server
+telnet 175.1.11.8 3306
+telnet 13.71.61.189 3306
+
+Step 6
+--------------------
+pmm-admin config --server-insecure-tls --server-url=https://admin:Open@123@3.109.229.121
+
+sudo pmm-admin config --server-insecure-tls --force --server-url=https://admin:M@pdb@123@172.150.0.56:443
+
+
+
+Step 7: Login to MySQL
+-----------------------
+mysql -u m2p331 -p -v
+select user,host from mysql.user where user='pmm'; 
+CREATE USER 'pmm'@'%' IDENTIFIED BY 'Open@123';
+GRANT SELECT, CREATE TEMPORARY TABLES, REPLICATION CLIENT ON *.* TO 'pmm'@'%' ;
+GRANT SELECT, PROCESS, SUPER, REPLICATION CLIENT, RELOAD ON *.* TO 'pmm'@'%';
+show grants for pmm;
+flush privileges;
+show global variables like 'innodb_monitor%';
+set global innodb_monitor_enable=All;
+
++--------------------------+-------+
+| Variable_name            | Value |
++--------------------------+-------+
+| innodb_monitor_disable   |       |
+| innodb_monitor_enable    | all   |
+| innodb_monitor_reset     |       |
+| innodb_monitor_reset_all |       |
++--------------------------+-------+
+
+step 7 : 
+--------------------
+ 
+pmm-admin add mysql --query-source=perfschema --username=pmm --password=Open@123  --service-name= ntt-chn-syn-auakua-dcl-prd-dv-mysql-03.m2pfintech.com --host=10.120.5.117 --port=2201
+
+pmm-admin add mysql --query-source=perfschema --username=pmm --password=Open@123  --service-name= SBM_prd  --host= 172.166.7.144 --port=2201
+
+MySQL Service added.
+
+Table statistics collection disabled (the limit is 1000, the actual table count is 34172).
+-------------- 
+ show global variables like 'performance_schema%';
+ 
+ 
+ 
+ pmm - download link as binary
+ 
+ https://www.percona.com/downloads/pmm2/2.26.0/ova/
+ 
+ https://docs.percona.com/percona-monitoring-and-management/setting-up/client/index.html
+ 
+ 
+step 8:
+
+
+pmm-admin remove :
+-------------------
+
+pmm-admin remove postgresql(Service type) postgres(Service name)
+ pmm-admin remove mongodb indus_mongo_2
+
+service type : mysql,mongodb,postgresql,proxysql,haproxy,external
+
+
+
+
+GRANT SELECT, CREATE TEMPORARY TABLES, REPLICATION CLIENT ON *.* TO 'pmm'@'%' ;
+
+
+monitusr
+
+Monitusr@123
+
+mailto:Smhnn@123
+
+CREATE USER 'monitusr'@'%' IDENTIFIED BY 'Monitusr@123';
+GRANT SELECT, CREATE TEMPORARY TABLES, REPLICATION CLIENT ON *.* TO 'monitusr'@'%' ;
+flush privileges;
+
+
+
+
+pmm-admin list
+pmm-admin inventory list nodes |grep -i 172.173.11.121
+pmm-admin inventory list nodes
+
+ 
+
+-----------------------------------------------------------
+TO REMOVE
+
+ 
+
+pmm-admin inventory remove node --force /node_id/f80a71a5-9718-4391-97fb-49022e8b9033
